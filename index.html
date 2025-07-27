@@ -399,52 +399,78 @@ function updatePipSummary() {
     }
 
     function renderTasks(textFilter = "", dateFilter = "") {
-      const tasks = getTasks();
-      taskList.innerHTML = "";
+  const tasks = getTasks();
+  taskList.innerHTML = "";
 
-      tasks
-        .filter(task => {
-          const matchesText = task.text.toLowerCase().includes(textFilter.toLowerCase());
-          const matchesDate = dateFilter === "" || task.date === dateFilter;
-          return matchesText && matchesDate;
-        })
-        .forEach(task => {
-          const li = document.createElement("li");
-          li.className = `task${task.completed ? " completed" : ""}`;
+  let monthlyTotals = {};
 
-          const taskText = document.createElement("div");
-          taskText.textContent = task.text;
-          taskText.style.cursor = "pointer";
-          taskText.onclick = () => toggleComplete(task.id);
+  tasks
+    .filter(task => {
+      const matchesText = task.text.toLowerCase().includes(textFilter.toLowerCase());
+      const matchesDate = dateFilter === "" || task.date === dateFilter;
+      return matchesText && matchesDate;
+    })
+    .forEach(task => {
+      const li = document.createElement("li");
+      li.className = `task${task.completed ? " completed" : ""}`;
 
-          const match = task.text.match(/[-+]?\d+/);
-          if (match) {
-            const num = parseInt(match[0]);
-            taskText.style.color = num > 0 ? "green" : "red";
-            taskText.style.fontWeight = "bold";
-          }
+      const taskText = document.createElement("div");
+      taskText.textContent = task.text;
+      taskText.style.cursor = "pointer";
+      taskText.onclick = () => toggleComplete(task.id);
 
-          const time = document.createElement("div");
-          time.className = "timestamp";
-          time.textContent = task.timestamp;
+      const match = task.text.match(/[-+]?\d*\.?\d+/);
+      let pipValue = 0;
+      if (match) {
+        pipValue = parseFloat(match[0]);
+        taskText.style.color = pipValue > 0 ? "green" : "red";
+        taskText.style.fontWeight = "bold";
+      }
 
-          const actions = document.createElement("div");
-          actions.className = "actions";
+      const dateKey = task.date.slice(0, 7); // "YYYY-MM"
+      if (!monthlyTotals[dateKey]) monthlyTotals[dateKey] = 0;
+      monthlyTotals[dateKey] += pipValue;
 
-          const editBtn = document.createElement("button");
-          editBtn.innerHTML = "✏️";
-          editBtn.onclick = () => editTask(task.id);
+      const time = document.createElement("div");
+      time.className = "timestamp";
+      time.textContent = task.timestamp;
 
-          const delBtn = document.createElement("button");
-          delBtn.innerHTML = "❌";
-          delBtn.onclick = () => deleteTask(task.id);
+      const actions = document.createElement("div");
+      actions.className = "actions";
 
-          actions.append(editBtn, delBtn);
-          li.append(taskText, time, actions);
-          taskList.appendChild(li);
-        });
-        updatePipSummary();
-    }
+      const editBtn = document.createElement("button");
+      editBtn.innerHTML = "✏️";
+      editBtn.onclick = () => editTask(task.id);
+
+      const delBtn = document.createElement("button");
+      delBtn.innerHTML = "❌";
+      delBtn.onclick = () => deleteTask(task.id);
+
+      actions.append(editBtn, delBtn);
+      li.append(taskText, time, actions);
+      taskList.appendChild(li);
+    });
+
+  // Show monthly summary
+  const summaryTitle = document.createElement("h3");
+  summaryTitle.textContent = "📆 Monthly Pips Summary";
+  taskList.appendChild(summaryTitle);
+
+  const summaryList = document.createElement("ul");
+  summaryList.style.listStyle = "none";
+  summaryList.style.paddingLeft = "0";
+
+  Object.entries(monthlyTotals).forEach(([month, total]) => {
+    const summaryItem = document.createElement("li");
+    summaryItem.textContent = `${month}: ${total.toFixed(2)} pips`;
+    summaryItem.style.color = total >= 0 ? "green" : "red";
+    summaryItem.style.fontWeight = "bold";
+    summaryList.appendChild(summaryItem);
+  });
+
+  taskList.appendChild(summaryList);
+}
+
 
     function toggleComplete(id) {
       const tasks = getTasks();
