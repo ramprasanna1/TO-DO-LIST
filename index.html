@@ -229,6 +229,17 @@
 .close-btn:hover {
   color: red;
 }
+@media (max-width: 600px) {
+  h3 {
+    font-size: 18px;
+    margin-top: 20px;
+  }
+
+  .summary-list li {
+    font-size: 16px;
+    padding: 4px 0;
+  }
+}
 
 
   </style>
@@ -459,6 +470,8 @@ function updatePipSummary() {
   const summaryList = document.createElement("ul");
   summaryList.style.listStyle = "none";
   summaryList.style.paddingLeft = "0";
+  summaryList.className = "summary-list";
+
 
   Object.entries(monthlyTotals).forEach(([month, total]) => {
     const summaryItem = document.createElement("li");
