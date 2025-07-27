@@ -156,10 +156,123 @@
         width: 100%;
       }
     }
+    .sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 250px;
+  background: #f0f0f0;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+  z-index: 1000;
+}
+
+.sidebar.open {
+  transform: translateX(0);
+}
+
+.toggle-btn {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  background: #007bff;
+  color: white;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  z-index: 1100;
+}
+
+.calculator {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.calculator input {
+  grid-column: span 4;
+  padding: 10px;
+  text-align: right;
+  font-size: 18px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+}
+
+.calculator button {
+  padding: 12px;
+  font-size: 16px;
+  border: none;
+  background: #007bff;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.calculator button:hover {
+  background: #0056b3;
+}
+
+.close-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #333;
+}
+.close-btn:hover {
+  color: red;
+}
+
+
   </style>
 </head>
 <body>
+    <!-- Toggle Button -->
+<button id="toggleBtn" class="toggle-btn" onclick="toggleSidebar()">☰ Calc</button>
+
+
+
+<!-- Sidebar -->
+<div id="sidebar" class="sidebar">
+    <button onclick="toggleSidebar()" style="margin-bottom: 10px; background: #dc3545;">X</button>
+  <h3>🧮 Calculator</h3>
+  <div class="calculator">
+    <input type="text" id="calcInput" readonly />
+
+    <button onclick="press('7')">7</button>
+    <button onclick="press('8')">8</button>
+    <button onclick="press('9')">9</button>
+    <button onclick="press('/')">÷</button>
+
+    <button onclick="press('4')">4</button>
+    <button onclick="press('5')">5</button>
+    <button onclick="press('6')">6</button>
+    <button onclick="press('*')">×</button>
+
+    <button onclick="press('1')">1</button>
+    <button onclick="press('2')">2</button>
+    <button onclick="press('3')">3</button>
+    <button onclick="press('-')">−</button>
+
+    <button onclick="press('0')">0</button>
+    <button onclick="press('.')">.</button>
+    <button onclick="calculate()">=</button>
+    <button onclick="press('+')">+</button>
+
+    <button onclick="clearCalc()" style="grid-column: span 4; background: #dc3545;">Clear</button>
+  </div>
+</div>
+
   <div class="container">
+    <div id="pipSummary" style="margin-bottom: 15px; font-weight: bold; text-align: center;"></div>
+
     <h2>📊 Pips Tracker To-Do</h2>
 
     <div class="export-button">
@@ -188,6 +301,41 @@
     const searchInput = document.getElementById("searchInput");
     const dateSearch = document.getElementById("dateSearch");
 
+    // Sidebar Toggle
+function toggleSidebar() {
+  const sidebar = document.getElementById("sidebar");
+  const toggleBtn = document.getElementById("toggleBtn");
+
+  sidebar.classList.toggle("open");
+
+  // Hide the button when sidebar is open
+  if (sidebar.classList.contains("open")) {
+    toggleBtn.style.display = "none";
+  } else {
+    toggleBtn.style.display = "block";
+  }
+}
+
+
+// Calculator Functions
+function press(val) {
+  document.getElementById("calcInput").value += val;
+}
+
+function calculate() {
+  try {
+    const result = eval(document.getElementById("calcInput").value);
+    document.getElementById("calcInput").value = result;
+  } catch {
+    document.getElementById("calcInput").value = "Error";
+  }
+}
+
+function clearCalc() {
+  document.getElementById("calcInput").value = "";
+}
+
+
     function getTasks() {
       return JSON.parse(localStorage.getItem("tasks") || "[]");
     }
@@ -195,6 +343,36 @@
     function saveTasks(tasks) {
       localStorage.setItem("tasks", JSON.stringify(tasks));
     }
+
+function updatePipSummary() {
+  const tasks = getTasks();
+  let totalPositive = 0;
+  let totalNegative = 0;
+
+  tasks.forEach(task => {
+    const match = task.text.match(/[-+]?\d*\.?\d+/);  // ✅ now matches decimals too
+    if (match) {
+      const value = parseFloat(match[0]); // ✅ parseFloat for decimal support
+      if (!isNaN(value)) {
+        if (value >= 0) totalPositive += value;
+        else totalNegative += value;
+      }
+    }
+  });
+
+  const net = totalPositive + totalNegative;
+
+  document.getElementById("pipSummary").innerHTML = `
+    📈 Total Gain: <span style="color:green;">${totalPositive.toFixed(2)} pips</span><br/>
+    📉 Total Loss: <span style="color:red;">${Math.abs(totalNegative).toFixed(2)} pips</span><br/>
+    🧮 Net Total: <strong>${
+      net >= 0
+        ? `<span style="color:green;">+${net.toFixed(2)}</span>`
+        : `<span style="color:red;">${net.toFixed(2)}</span>`
+    } pips</strong>
+  `;
+}
+
 
     function addTask() {
       const text = taskInput.value.trim();
@@ -265,6 +443,7 @@
           li.append(taskText, time, actions);
           taskList.appendChild(li);
         });
+        updatePipSummary();
     }
 
     function toggleComplete(id) {
@@ -349,8 +528,12 @@
       }
     }
 
+
+
     addDefaultTasksIfNeeded();
     renderTasks();
+    
+
   </script>
 </body>
 </html>
