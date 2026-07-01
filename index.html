@@ -257,7 +257,7 @@
 </main>
 
 <script>
-const STORAGE_KEY = 'trades'; // persisted via window.storage, personal (not shared)
+const STORAGE_KEY = 'trade_journal_trades'; // persisted via browser localStorage
 const CORRECT_PW = '1234'; // ← Change this password
 let editingIndex = -1;
 let isUnlocked = false;
@@ -265,47 +265,50 @@ let pendingAction = null;
 let pendingIndex = null;
 let pwVisible = false;
 
-// ---- Persistent storage (window.storage) instead of localStorage ----
-
-
-const STORAGE_KEY = "trades";
-
-// Load trades
-async function load() {
+// ---- Persistent storage (browser localStorage) ----
+function load() {
   try {
-    if (window.storage) {
-      const result = await window.storage.get(STORAGE_KEY, false);
-      return result ? JSON.parse(result.value) : [];
-    }
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
   } catch (e) {
-    console.warn("Remevo storage unavailable, using localStorage.");
-  }
-
-  // Fallback to localStorage
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-  } catch {
+    // Corrupt data or storage unavailable — treat as empty journal
     return [];
   }
 }
 
-// Save trades
-async function save(trades) {
-  const data = JSON.stringify(trades);
-
-  // Always save locally
-  localStorage.setItem(STORAGE_KEY, data);
-
-  // Also save to Remevo if available
+function save(trades) {
   try {
-    if (window.storage) {
-      await window.storage.set(STORAGE_KEY, data, false);
-    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(trades));
+    return true;
   } catch (e) {
-    console.warn("Could not save to Remevo storage:", e);
+    console.error('Storage error:', e);
+    showToast('Could not save — please try again', true);
+    return false;
   }
+}
 
-  return true;
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isError ? ' error' : '');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+function calcPct(acc, total) {
+  if (!acc || !total) return null;
+  return ((total - acc) / acc * 100).toFixed(2);
+}
+function result(pips) {
+  if (pips === null || pips === '') return null;
+  const n = parseFloat(pips);
+  if (n > 0) return 'win'; if (n < 0) return 'loss'; return 'be';
+}
+function fmtDate(d) {
+  if (!d) return '';
+  const dt = new Date(d);
+  if (isNaN(dt)) return d;
+  return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 // ---- Auth ----
@@ -377,24 +380,24 @@ function toggleLock() {
   }
 }
 
-async function executeAction(action, idx) {
+function executeAction(action, idx) {
   if (action === 'unlock') {
     isUnlocked = true;
-    await updateLockUI();
+    updateLockUI();
     return;
   }
-  if (action === 'edit') { await startEdit(idx); return; }
-  if (action === 'delete') { await deleteTrade(idx); return; }
+  if (action === 'edit') { startEdit(idx); return; }
+  if (action === 'delete') { deleteTrade(idx); return; }
   if (action === 'clearall') {
     if (!confirm('Clear ALL trades? This cannot be undone.')) return;
-    await cancelEdit();
-    await save([]);
-    await render();
+    cancelEdit();
+    save([]);
+    render();
     return;
   }
 }
 
-async function updateLockUI() {
+function updateLockUI() {
   const pill = document.getElementById('authPill');
   const pillText = document.getElementById('authPillText');
   const btn = document.getElementById('lockToggleBtn');
@@ -412,7 +415,7 @@ async function updateLockUI() {
     btn.className = 'btn btn-lock';
     btnText.textContent = 'Unlock to Edit';
   }
-  await render();
+  render();
 }
 
 // ---- Stats ----
@@ -472,15 +475,15 @@ function renderTable(trades) {
   }).join('');
 }
 
-async function render() {
-  const trades = await load();
+function render() {
+  const trades = load();
   renderStats(trades);
   renderTable(trades);
 }
 
 // ---- Edit / Submit ----
-async function startEdit(i) {
-  const trades = await load();
+function startEdit(i) {
+  const trades = load();
   const t = trades[i];
   if (!t) return;
   editingIndex = i;
@@ -502,7 +505,7 @@ async function startEdit(i) {
   renderTable(trades);
 }
 
-async function cancelEdit() {
+function cancelEdit() {
   editingIndex = -1;
   ['f_date','f_lot','f_pl1','f_pl2','f_pl3','f_pips','f_acc','f_total','f_htf','f_ltf'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('formTitle').textContent = 'Add New Trade';
@@ -510,10 +513,10 @@ async function cancelEdit() {
   document.getElementById('submitBtn').textContent = 'Add Trade';
   document.getElementById('formCard').classList.remove('edit-mode');
   setTodayDate();
-  await render();
+  render();
 }
 
-async function submitForm() {
+function submitForm() {
   const date = document.getElementById('f_date').value;
   const lot = document.getElementById('f_lot').value.trim();
   const pl1 = document.getElementById('f_pl1').value.trim();
@@ -529,31 +532,31 @@ async function submitForm() {
   const submitBtn = document.getElementById('submitBtn');
   submitBtn.disabled = true;
   const wasEditing = editingIndex >= 0;
-  const trades = await load();
+  const trades = load();
   const entry = { date, lot, pl1, pl2, pl3, pips, acc, total, htf, ltf };
   if (wasEditing) trades[editingIndex] = entry;
   else trades.push(entry);
-  const ok = await save(trades);
+  const ok = save(trades);
   submitBtn.disabled = false;
   if (ok) showToast(wasEditing ? 'Trade updated' : 'Trade added');
-  await cancelEdit();
+  cancelEdit();
 }
 
-async function deleteTrade(i) {
+function deleteTrade(i) {
   if (!confirm('Delete this trade?')) return;
   const wasEditing = editingIndex === i;
-  const trades = await load();
+  const trades = load();
   trades.splice(i, 1);
-  const ok = await save(trades);
+  const ok = save(trades);
   if (ok) showToast('Trade deleted');
   if (editingIndex > i) editingIndex--;
-  if (wasEditing) { await cancelEdit(); }
-  else { await render(); }
+  if (wasEditing) { cancelEdit(); }
+  else { render(); }
 }
 
 // ---- XLSX ----
-async function downloadXLSX() {
-  const trades = await load();
+function downloadXLSX() {
+  const trades = load();
   const wb = XLSX.utils.book_new();
   const headers = ['DATE','LOT SIZE','P/L 1st','P/L 2nd','P/L 3rd','Total PIPS','ACCOUNT SIZE','TOTAL','Percentage(%)','HIGHER TIMEFRAME','LOWER TIMEFRAME'];
   const rows = trades.map(t => {
@@ -586,10 +589,9 @@ function setTodayDate() {
   document.getElementById('f_date').value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 }
 
-(async function init() {
+(function init() {
   setTodayDate();
-  document.getElementById('statsGrid').innerHTML = '<div class="stat-card neutral"><div class="label">Loading</div><div class="value">…</div></div>';
-  await render();
+  render();
 })();
 
 setInterval(() => { if (editingIndex < 0) setTodayDate(); }, 60000);
