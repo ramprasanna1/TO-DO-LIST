@@ -45,6 +45,7 @@
   .btn-lock:hover { background: #FAC775; }
   .btn-unlock { background: var(--success-bg); color: var(--success); border-color: #C0DD97; }
   .btn-unlock:hover { background: #C0DD97; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   main { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
 
@@ -121,6 +122,10 @@
   .modal-error { font-size: 12px; color: var(--danger); margin-bottom: 10px; min-height: 16px; }
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
+  .toast { position: fixed; bottom: 20px; right: 20px; background: var(--text); color: #fff; padding: 10px 16px; border-radius: 8px; font-size: 13px; box-shadow: var(--shadow); z-index: 200; opacity: 0; transform: translateY(8px); transition: opacity 0.2s, transform 0.2s; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.error { background: var(--danger); }
+
   @media (max-width: 600px) {
     header { flex-direction: column; gap: 10px; align-items: flex-start; }
     .form-grid { grid-template-columns: 1fr 1fr; }
@@ -147,6 +152,8 @@
     </div>
   </div>
 </div>
+
+<div class="toast" id="toast"></div>
 
 <header>
   <div class="logo">
@@ -250,7 +257,7 @@
 </main>
 
 <script>
-const STORAGE_KEY = 'trade_journal_v1';
+const STORAGE_KEY = 'trades'; // persisted via window.storage, personal (not shared)
 const CORRECT_PW = '1234'; // ← Change this password
 let editingIndex = -1;
 let isUnlocked = false;
@@ -258,8 +265,36 @@ let pendingAction = null;
 let pendingIndex = null;
 let pwVisible = false;
 
-function load() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch { return []; } }
-function save(trades) { localStorage.setItem(STORAGE_KEY, JSON.stringify(trades)); }
+// ---- Persistent storage (window.storage) instead of localStorage ----
+async function load() {
+  try {
+    const result = await window.storage.get(STORAGE_KEY, false);
+    return result ? JSON.parse(result.value) : [];
+  } catch (e) {
+    // Key not found yet, or a storage error — treat as empty journal
+    return [];
+  }
+}
+
+async function save(trades) {
+  try {
+    const result = await window.storage.set(STORAGE_KEY, JSON.stringify(trades), false);
+    if (!result) showToast('Could not save — please try again', true);
+    return result;
+  } catch (e) {
+    console.error('Storage error:', e);
+    showToast('Could not save — please try again', true);
+    return null;
+  }
+}
+
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isError ? ' error' : '');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2200);
+}
 
 function calcPct(acc, total) {
   if (!acc || !total) return null;
@@ -346,21 +381,24 @@ function toggleLock() {
   }
 }
 
-function executeAction(action, idx) {
+async function executeAction(action, idx) {
   if (action === 'unlock') {
     isUnlocked = true;
-    updateLockUI();
+    await updateLockUI();
     return;
   }
-  if (action === 'edit') { startEdit(idx); return; }
-  if (action === 'delete') { deleteTrade(idx); return; }
+  if (action === 'edit') { await startEdit(idx); return; }
+  if (action === 'delete') { await deleteTrade(idx); return; }
   if (action === 'clearall') {
     if (!confirm('Clear ALL trades? This cannot be undone.')) return;
-    cancelEdit(); save([]); render(); return;
+    await cancelEdit();
+    await save([]);
+    await render();
+    return;
   }
 }
 
-function updateLockUI() {
+async function updateLockUI() {
   const pill = document.getElementById('authPill');
   const pillText = document.getElementById('authPillText');
   const btn = document.getElementById('lockToggleBtn');
@@ -378,7 +416,7 @@ function updateLockUI() {
     btn.className = 'btn btn-lock';
     btnText.textContent = 'Unlock to Edit';
   }
-  render();
+  await render();
 }
 
 // ---- Stats ----
@@ -438,12 +476,17 @@ function renderTable(trades) {
   }).join('');
 }
 
-function render() { const trades = load(); renderStats(trades); renderTable(trades); }
+async function render() {
+  const trades = await load();
+  renderStats(trades);
+  renderTable(trades);
+}
 
 // ---- Edit / Submit ----
-function startEdit(i) {
-  const trades = load();
+async function startEdit(i) {
+  const trades = await load();
   const t = trades[i];
+  if (!t) return;
   editingIndex = i;
   document.getElementById('f_date').value = t.date || '';
   document.getElementById('f_lot').value = t.lot || '';
@@ -463,7 +506,7 @@ function startEdit(i) {
   renderTable(trades);
 }
 
-function cancelEdit() {
+async function cancelEdit() {
   editingIndex = -1;
   ['f_date','f_lot','f_pl1','f_pl2','f_pl3','f_pips','f_acc','f_total','f_htf','f_ltf'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('formTitle').textContent = 'Add New Trade';
@@ -471,10 +514,10 @@ function cancelEdit() {
   document.getElementById('submitBtn').textContent = 'Add Trade';
   document.getElementById('formCard').classList.remove('edit-mode');
   setTodayDate();
-  render();
+  await render();
 }
 
-function submitForm() {
+async function submitForm() {
   const date = document.getElementById('f_date').value;
   const lot = document.getElementById('f_lot').value.trim();
   const pl1 = document.getElementById('f_pl1').value.trim();
@@ -486,26 +529,35 @@ function submitForm() {
   const htf = document.getElementById('f_htf').value;
   const ltf = document.getElementById('f_ltf').value;
   if (!date && !lot && !pips) { alert('Please fill in at least Date, Lot Size, or Total Pips.'); return; }
-  const trades = load();
+
+  const submitBtn = document.getElementById('submitBtn');
+  submitBtn.disabled = true;
+  const wasEditing = editingIndex >= 0;
+  const trades = await load();
   const entry = { date, lot, pl1, pl2, pl3, pips, acc, total, htf, ltf };
-  if (editingIndex >= 0) { trades[editingIndex] = entry; save(trades); cancelEdit(); }
-  else { trades.push(entry); save(trades); cancelEdit(); }
-  render();
+  if (wasEditing) trades[editingIndex] = entry;
+  else trades.push(entry);
+  const ok = await save(trades);
+  submitBtn.disabled = false;
+  if (ok) showToast(wasEditing ? 'Trade updated' : 'Trade added');
+  await cancelEdit();
 }
 
-function deleteTrade(i) {
+async function deleteTrade(i) {
   if (!confirm('Delete this trade?')) return;
-  if (editingIndex === i) cancelEdit();
-  const trades = load();
+  const wasEditing = editingIndex === i;
+  const trades = await load();
   trades.splice(i, 1);
-  save(trades);
+  const ok = await save(trades);
+  if (ok) showToast('Trade deleted');
   if (editingIndex > i) editingIndex--;
-  render();
+  if (wasEditing) { await cancelEdit(); }
+  else { await render(); }
 }
 
 // ---- XLSX ----
-function downloadXLSX() {
-  const trades = load();
+async function downloadXLSX() {
+  const trades = await load();
   const wb = XLSX.utils.book_new();
   const headers = ['DATE','LOT SIZE','P/L 1st','P/L 2nd','P/L 3rd','Total PIPS','ACCOUNT SIZE','TOTAL','Percentage(%)','HIGHER TIMEFRAME','LOWER TIMEFRAME'];
   const rows = trades.map(t => {
@@ -533,9 +585,10 @@ function downloadXLSX() {
 }
 
 // ---- Init ----
-function seedIfEmpty() {
-  if (load().length > 0) return;
-  save([
+async function seedIfEmpty() {
+  const existing = await load();
+  if (existing.length > 0) return;
+  await save([
     { date:'2026-06-18', lot:'0.02', pl1:'100 pips', pl2:'100 pips', pl3:'', pips:'200', acc:'100', total:'140', htf:'LIQUIDITY SWEEP', ltf:'CISD' },
     { date:'2026-06-19', lot:'0.01,0.02', pl1:'50pips', pl2:'150pips', pl3:'', pips:'100', acc:'140', total:'160', htf:'REJECTION BLOCK', ltf:'FVG CLOSE' },
     { date:'2026-06-22', lot:'0.02', pl1:'120 pips', pl2:'', pl3:'', pips:'120', acc:'160', total:'182', htf:'S&R', ltf:'S&R BREAKOUT' },
@@ -546,9 +599,17 @@ function setTodayDate() {
   document.getElementById('f_date').value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 }
 
-seedIfEmpty();
-setTodayDate();
-render();
+(async function init() {
+  setTodayDate();
+  document.getElementById('statsGrid').innerHTML = '<div class="stat-card neutral"><div class="label">Loading</div><div class="value">…</div></div>';
+  try {
+    await seedIfEmpty();
+  } catch (e) {
+    console.error('Seed error:', e);
+  }
+  await render();
+})();
+
 setInterval(() => { if (editingIndex < 0) setTodayDate(); }, 60000);
 </script>
 </body>
