@@ -585,15 +585,6 @@ async function downloadXLSX() {
 }
 
 // ---- Init ----
-async function seedIfEmpty() {
-  const existing = await load();
-  if (existing.length > 0) return;
-  await save([
-    { date:'2026-06-18', lot:'0.02', pl1:'100 pips', pl2:'100 pips', pl3:'', pips:'200', acc:'100', total:'140', htf:'LIQUIDITY SWEEP', ltf:'CISD' },
-    { date:'2026-06-19', lot:'0.01,0.02', pl1:'50pips', pl2:'150pips', pl3:'', pips:'100', acc:'140', total:'160', htf:'REJECTION BLOCK', ltf:'FVG CLOSE' },
-    { date:'2026-06-22', lot:'0.02', pl1:'120 pips', pl2:'', pl3:'', pips:'120', acc:'160', total:'182', htf:'S&R', ltf:'S&R BREAKOUT' },
-  ]);
-}
 function setTodayDate() {
   const now = new Date();
   document.getElementById('f_date').value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
@@ -602,11 +593,6 @@ function setTodayDate() {
 (async function init() {
   setTodayDate();
   document.getElementById('statsGrid').innerHTML = '<div class="stat-card neutral"><div class="label">Loading</div><div class="value">…</div></div>';
-  try {
-    await seedIfEmpty();
-  } catch (e) {
-    console.error('Seed error:', e);
-  }
   await render();
 })();
 
