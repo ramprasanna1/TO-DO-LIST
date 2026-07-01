@@ -266,50 +266,46 @@ let pendingIndex = null;
 let pwVisible = false;
 
 // ---- Persistent storage (window.storage) instead of localStorage ----
+
+
+const STORAGE_KEY = "trades";
+
+// Load trades
 async function load() {
   try {
-    const result = await window.storage.get(STORAGE_KEY, false);
-    return result ? JSON.parse(result.value) : [];
+    if (window.storage) {
+      const result = await window.storage.get(STORAGE_KEY, false);
+      return result ? JSON.parse(result.value) : [];
+    }
   } catch (e) {
-    // Key not found yet, or a storage error — treat as empty journal
+    console.warn("Remevo storage unavailable, using localStorage.");
+  }
+
+  // Fallback to localStorage
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+  } catch {
     return [];
   }
 }
 
+// Save trades
 async function save(trades) {
+  const data = JSON.stringify(trades);
+
+  // Always save locally
+  localStorage.setItem(STORAGE_KEY, data);
+
+  // Also save to Remevo if available
   try {
-    const result = await window.storage.set(STORAGE_KEY, JSON.stringify(trades), false);
-    if (!result) showToast('Could not save — please try again', true);
-    return result;
+    if (window.storage) {
+      await window.storage.set(STORAGE_KEY, data, false);
+    }
   } catch (e) {
-    console.error('Storage error:', e);
-    showToast('Could not save — please try again', true);
-    return null;
+    console.warn("Could not save to Remevo storage:", e);
   }
-}
 
-function showToast(msg, isError) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = 'toast show' + (isError ? ' error' : '');
-  clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.remove('show'), 2200);
-}
-
-function calcPct(acc, total) {
-  if (!acc || !total) return null;
-  return ((total - acc) / acc * 100).toFixed(2);
-}
-function result(pips) {
-  if (pips === null || pips === '') return null;
-  const n = parseFloat(pips);
-  if (n > 0) return 'win'; if (n < 0) return 'loss'; return 'be';
-}
-function fmtDate(d) {
-  if (!d) return '';
-  const dt = new Date(d);
-  if (isNaN(dt)) return d;
-  return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  return true;
 }
 
 // ---- Auth ----
